@@ -13,6 +13,8 @@ packages:
   # Deploy root of the single-exe build: a pure dependency manifest whose
   # closure is what the exe bundles and what the Python runtime distributes.
   - python/sdk-runtime
+  # OnlyEdu 插件目录：cordis loader 按源码直载，包依赖经 workspace 链接解析
+  - onlyedu/plugins/*
 
 # Vendored framework packages keep their upstream semver ranges, while local
 # builds must resolve those matching names to this workspace's pinned sources.

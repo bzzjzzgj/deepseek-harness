@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+# OnlyEdu Dashboard API 依赖固化镜像（仅依赖，不含业务编译）。
+# 由主 Dockerfile（同目录）FROM 本镜像构建产物；本文件独立构建，产物打本地 tag
+# onlyedu-dashboard-api-deps，与业务层解耦。
+#
+# 构建上下文必须是仓库根：
+#   docker build -f onlyedu/python/dashboard-api/Dockerfile.deps -t onlyedu-dashboard-api-deps .
+#
+# 何时重建：仅当依赖变更——pnpm-lock.yaml / uv.lock / pyproject.toml（deps 部分）/
+# package.json（workspace 依赖声明）/ apt 包清单 任一变化。重建时 pnpm store 与 uv
+# cache 走 cache mount，只重装增量，免重新下载。
+#
+# 容器内路径与宿主不同：全仓源码快照作为 workspace 符号链接与 uv editable 的目标；
+# .dockerignore 已排除宿主 node_modules/.venv（Windows 产物，带进镜像会覆盖 Linux 版本）。
+
+FROM node:24-bookworm-slim
+WORKDIR /repo
+# npm 走国内镜像（npm install -g pnpm 与 pnpm install 都生效；lockfile 的 integrity
+# 校验不受 registry host 替换影响）
+ENV npm_config_registry=https://registry.npmmirror.com
+# git：构建脚本要跑 git rev-parse 注入版本元信息。
+# 编译器：build:native-system 只编 C——flock glibc addon 用 cc（gcc），landlock-run
+# 静态 musl 与 flock musl addon 用 musl-gcc（musl-tools）；g++/make/dpkg-dev 用不上，
+# 不进 build-essential 元包。libc6-dev 必须显式带上：gcc 内部 include_next 依赖 libc
+# 标准头文件（/usr/include/stdint.h 等），而 gcc 只依赖 libc6 运行时、不依赖 dev 头文件
+# （build-essential 原先正是通过显式依赖带上的）。libasan8/libgomp1 等是 gcc 硬依赖，无法精简。
+# apt 换国内镜像源（bookworm 的 deb822 源文件，security 条目同域一并替换），官方源国际链路极慢
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends git gcc musl-tools libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+# python3.12 + uv 整体并入 /usr/local（与 uv 官方镜像安装路径一致，保证 .venv 符号链接有效）
+COPY --from=ghcr.io/astral-sh/uv:python3.12-bookworm-slim /usr/local /usr/local
+RUN npm install -g pnpm@11.7.0
+# 全仓源码快照：workspace 符号链接与 uv editable 的目标目录；依赖产物一次性固化于此
+COPY . .
+# node_modules 固化。摘掉 postinstall（lefthook git hooks）：所有权 marker 绑定宿主
+# .git，容器内校验必失败。pnpm store 走 cache mount：重建时免重新下载。
+RUN --mount=type=cache,target=/pnpm/store \
+    pnpm config set store-dir /pnpm/store \
+    && node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));delete p.scripts.postinstall;fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')" \
+    && pnpm install --frozen-lockfile
+# .venv 固化；uv 下载缓存挂 mount：重建时免重复下载 wheel
+RUN --mount=type=cache,target=/root/.cache/uv \
+    cd onlyedu/python/dashboard-api && uv sync --frozen --no-dev

@@ -1,0 +1,55 @@
+- insert:
+    - id: onlyedu-site-dashboard
+      # 相对路径（相对本文件）在宿主与容器内都成立；写死绝对路径会让容器 ESM
+      # loader 撞上 'd:' 协议直接炸（ERR_UNSUPPORTED_ESM_URL_SCHEME）
+      name: "./src/index.ts"
+      config:
+        sites:
+          - id: tsc
+            name: OnlyEdu TSC
+            # 控制器路由为 api/[controller] → 物理路径 /api/AgentData/*。
+            # 按你实际部署改：直连（默认 localhost:8080）或经 /TscOpen 网关则加前缀。
+            baseUrl: http://localhost:5050/api
+            headers: {} # Controller [AllowAnonymous]，无需 token
+            endpoints:
+              # 学员基础：studentId / studentCode / mobilePhone / studentName 四选一；姓名模糊≥2字，上限20条
+              - id: student_basic
+                path: /AgentData/Query
+                method: POST
+                dataType: student_basic
+                parameters:
+                  - name: studentId
+                    in: body
+                    type: string
+                    description: 学员ID，精确匹配
+                  - name: studentCode
+                    in: body
+                    type: string
+                    description: 学员编码，精确匹配
+                  - name: mobilePhone
+                    in: body
+                    type: string
+                    description: 手机号，精确匹配
+                  - name: studentName
+                    in: body
+                    type: string
+                    description: 姓名，模糊匹配（至少2个字符）
+              # 学员报读班级：studentId 必填
+              - id: student_classes
+                path: /AgentData/Query
+                method: POST
+                dataType: student_classes
+                parameters:
+                  - name: studentId
+                    in: body
+                    type: string
+                    required: true
+                    description: 学员ID
+                  - name: bdmBusinessDepId
+                    in: body
+                    type: string
+                    description: 业务事业部ID，可选过滤只看某事业部
+              # 能力自描述：返回全部可用 dataType 及字段说明；看板技能理不清字段时先调它
+              - id: agent-types
+                path: /AgentData/Types
+                method: POST

@@ -1,0 +1,25 @@
+[project]
+name = "onlyedu-dashboard-api"
+version = "0.2.0"
+description = "HTTP API wrapper that drives DeepSeek Harness skills for external Hangfire callers"
+requires-python = ">=3.10"
+dependencies = [
+  "deepseek-harness-sdk>=0.0.1.dev0",
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "pydantic>=2.12,<3",
+]
+
+[dependency-groups]
+test = ["pytest>=8.0", "httpx>=0.27"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+deepseek-harness-sdk = { path = "../../../python/sdk", editable = true }
+deepseek-harness-runtime-bin = { path = "../../../python/sdk-runtime", editable = true }
